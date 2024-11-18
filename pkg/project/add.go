@@ -1,15 +1,13 @@
 package project
 
 import (
+	"github.com/sst/ion/pkg/process"
 	"os"
-	"os/exec"
 	"path/filepath"
-
-	"github.com/sst/ion/pkg/global"
 )
 
 func (p *Project) Add(pkg string, version string) error {
-	cmd := exec.Command(global.BunPath(), filepath.Join(p.PathPlatformDir(), "src/ast/add.ts"),
+	cmd := process.Command("node", filepath.Join(p.PathPlatformDir(), "src/ast/add.mjs"),
 		p.PathConfig(),
 		pkg,
 		version,

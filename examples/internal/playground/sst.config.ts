@@ -13,6 +13,7 @@ export default $config({
 
     const vpc = addVpc();
     const bucket = addBucket();
+    //const queue = addQueue();
     //const efs = addEfs();
     //const email = addEmail();
     //const apiv1 = addApiV1();
@@ -22,17 +23,33 @@ export default $config({
     //const postgres = addPostgres();
     //const redis = addRedis();
     //const cron = addCron();
+    //const topic = addTopic();
+    //const bus = addBus();
 
     return ret;
 
     function addVpc() {
-      return new sst.aws.Vpc("MyVpc");
+      const vpc = new sst.aws.Vpc("MyVpc");
+      return vpc;
     }
 
     function addBucket() {
       const bucket = new sst.aws.Bucket("MyBucket");
       ret.bucket = bucket.name;
       return bucket;
+    }
+
+    function addQueue() {
+      const queue = new sst.aws.Queue("MyQueue");
+      queue.subscribe("functions/queue/index.subscriber");
+
+      new sst.aws.Function("MyQueuePublisher", {
+        handler: "functions/queue/index.publisher",
+        link: [queue],
+        url: true,
+      });
+
+      return queue;
     }
 
     function addEfs() {
@@ -53,7 +70,10 @@ export default $config({
 
     function addEmail() {
       const topic = new sst.aws.SnsTopic("MyTopic");
-      topic.subscribe("functions/email/index.notification");
+      topic.subscribe(
+        "MyTopicSubscriber",
+        "functions/email/index.notification"
+      );
 
       const email = new sst.aws.Email("MyEmail", {
         sender: "wangfanjie@gmail.com",
@@ -76,18 +96,6 @@ export default $config({
       ret.email = email.sender;
       ret.emailConfig = email.configSet;
       return ret;
-    }
-
-    function addCron() {
-      const cron = new sst.aws.Cron("MyCron", {
-        schedule: "rate(1 minute)",
-        job: {
-          handler: "functions/handler-example/index.handler",
-          link: [bucket],
-        },
-      });
-      ret.cron = cron.nodes.job.name;
-      return cron;
     }
 
     function addApiV1() {
@@ -123,7 +131,7 @@ export default $config({
     function addService() {
       const cluster = new sst.aws.Cluster("MyCluster", { vpc });
       const service = cluster.addService("MyService", {
-        public: {
+        loadBalancer: {
           ports: [{ listen: "80/http" }],
         },
         image: {
@@ -131,7 +139,6 @@ export default $config({
         },
         link: [bucket],
       });
-      ret.service = service.url;
       return service;
     }
 
@@ -140,7 +147,7 @@ export default $config({
         vpc,
       });
       ret.pgHost = postgres.host;
-      ret.pgPort = $interpolate`postgres.port`;
+      ret.pgPort = $interpolate`${postgres.port}`;
       ret.pgUsername = postgres.username;
       ret.pgPassword = postgres.password;
       return postgres;
@@ -155,6 +162,49 @@ export default $config({
         link: [redis],
       });
       return redis;
+    }
+
+    function addCron() {
+      const cron = new sst.aws.Cron("MyCron", {
+        schedule: "rate(1 minute)",
+        job: {
+          handler: "functions/handler-example/index.handler",
+          link: [bucket],
+        },
+      });
+      ret.cron = cron.nodes.job.name;
+      return cron;
+    }
+
+    function addTopic() {
+      const topic = new sst.aws.SnsTopic("MyTopic");
+      topic.subscribe("MyTopicSubscriber", "functions/topic/index.subscriber");
+
+      new sst.aws.Function("MyTopicPublisher", {
+        handler: "functions/topic/index.publisher",
+        link: [topic],
+        url: true,
+      });
+
+      return topic;
+    }
+
+    function addBus() {
+      const bus = new sst.aws.Bus("MyBus");
+      bus.subscribe("functions/bus/index.subscriber", {
+        pattern: {
+          source: ["app.myevent"],
+        },
+      });
+      bus.subscribeQueue("test", queue);
+
+      new sst.aws.Function("MyBusPublisher", {
+        handler: "functions/bus/index.publisher",
+        link: [bus],
+        url: true,
+      });
+
+      return bus;
     }
   },
 });

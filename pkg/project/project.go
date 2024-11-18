@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"regexp"
 	"strings"
@@ -17,6 +16,7 @@ import (
 	"github.com/sst/ion/internal/util"
 	"github.com/sst/ion/pkg/flag"
 	"github.com/sst/ion/pkg/js"
+	"github.com/sst/ion/pkg/process"
 	"github.com/sst/ion/pkg/project/provider"
 	"github.com/sst/ion/pkg/runtime"
 	"github.com/sst/ion/pkg/runtime/node"
@@ -85,6 +85,7 @@ type ProjectConfig struct {
 
 var ErrInvalidStageName = fmt.Errorf("invalid stage name")
 var ErrInvalidAppName = fmt.Errorf("invalid app name")
+var ErrAppNameChanged = fmt.Errorf("app name changed")
 var ErrV2Config = fmt.Errorf("sstv2 config detected")
 var ErrBuildFailed = fmt.Errorf("")
 var ErrVersionInvalid = fmt.Errorf("invalid version")
@@ -153,7 +154,7 @@ console.log("~j" + JSON.stringify(mod.app({
 	defer js.Cleanup(buildResult)
 
 	slog.Info("evaluating config")
-	node := exec.Command("node", "--no-warnings", string(buildResult.OutputFiles[1].Path))
+	node := process.Command("node", "--no-warnings", string(buildResult.OutputFiles[1].Path))
 	output, err := node.CombinedOutput()
 	slog.Info("config evaluated")
 	if err != nil {
@@ -196,6 +197,23 @@ console.log("~j" + JSON.stringify(mod.app({
 
 			if InvalidAppRegex.MatchString(proj.app.Name) {
 				return nil, ErrInvalidAppName
+			}
+
+			// Check if app name has changed by comparing the folder name inside ".pulumi/stacks"
+			// and the app name in the config file.
+			stacksDir := filepath.Join(proj.PathWorkingDir(), ".pulumi", "stacks")
+			files, err := os.ReadDir(stacksDir)
+			if err != nil {
+				if !os.IsNotExist(err) {
+					return nil, err
+				}
+				files = []os.DirEntry{}
+			}
+			if len(files) > 0 {
+				appName := files[0].Name()
+				if appName != proj.app.Name {
+					return nil, ErrAppNameChanged
+				}
 			}
 
 			if proj.app.Home == "" {
@@ -256,14 +274,14 @@ func (proj *Project) LoadHome() error {
 		case "cloudflare":
 			match = &provider.CloudflareProvider{}
 		case "aws":
-			match = &provider.AwsProvider{}
+			match = provider.NewAwsProvider()
 		}
 		if match == nil {
 			continue
 		}
 		err := match.Init(proj.app.Name, proj.app.Stage, args.(map[string]interface{}))
 		if err != nil {
-			return util.NewReadableError(err, err.Error())
+			return util.NewReadableError(err, key+": "+err.Error())
 		}
 		env, err := match.Env()
 		if err != nil {

@@ -243,7 +243,7 @@ Let's start by creating our project.
 
 ```bash
 npm create astro@latest aws-astro-container
-cd aws-astro
+cd aws-astro-container
 ```
 
 We are picking all the default options.
@@ -279,7 +279,7 @@ async run() {
   const cluster = new sst.aws.Cluster("MyCluster", { vpc });
 
   cluster.addService("MyService", {
-    public: {
+    loadBalancer: {
       ports: [{ listen: "80/http", forward: "4321/http" }],
     },
     dev: {

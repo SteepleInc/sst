@@ -5,18 +5,12 @@ import config from "./config";
 import sst from "astro-sst";
 
 const sidebar = [
-  {
-    label: "Intro",
-    slug: "docs",
-  },
-  {
-    label: "Workflow",
-    slug: "docs/workflow",
-  },
+  { label: "Intro", slug: "docs" },
+  { label: "Workflow", slug: "docs/workflow" },
+  { label: "Enterprise", slug: "docs/enterprise" },
   {
     label: "Get Started",
     items: [
-      { label: "API", slug: "docs/start/aws/api" },
       { label: "Bun", slug: "docs/start/aws/bun" },
       { label: "Nuxt", slug: "docs/start/aws/nuxt" },
       { label: "Solid", slug: "docs/start/aws/solid" },

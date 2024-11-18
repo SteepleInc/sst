@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"os/exec"
 	"os/signal"
 	"os/user"
 	"path/filepath"
@@ -23,6 +22,7 @@ import (
 	"github.com/sst/ion/pkg/flag"
 	"github.com/sst/ion/pkg/global"
 	"github.com/sst/ion/pkg/id"
+	"github.com/sst/ion/pkg/process"
 	"github.com/sst/ion/pkg/project"
 	"github.com/sst/ion/pkg/project/provider"
 	"github.com/sst/ion/pkg/telemetry"
@@ -37,7 +37,7 @@ func main() {
 	if _, err := os.Stat(nodeModulesBinPath); err == nil && !strings.Contains(binary, "node_modules") && os.Getenv("SST_SKIP_LOCAL") != "true" && version != "dev" {
 		// forward command to node_modules/.bin/sst
 		fmt.Println(ui.TEXT_WARNING_BOLD.Render("Warning: ") + "You are using a global installation of SST but you also have a local installation specified in your package.json. The local installation will be used but you should typically run it through your package manager.")
-		cmd := exec.Command(nodeModulesBinPath, os.Args[1:]...)
+		cmd := process.Command(nodeModulesBinPath, os.Args[1:]...)
 		cmd.Stdout = os.Stdout
 		cmd.Stderr = os.Stderr
 		cmd.Stdin = os.Stdin
@@ -50,6 +50,7 @@ func main() {
 	}
 	telemetry.SetVersion(version)
 	defer telemetry.Close()
+	defer process.Cleanup()
 	telemetry.Track("cli.start", map[string]interface{}{
 		"args": os.Args[1:],
 	})
@@ -57,17 +58,21 @@ func main() {
 	if err != nil {
 		err := errors.Transform(err)
 		errorMessage := err.Error()
+		truncated := errorMessage
 		if len(errorMessage) > 255 {
-			errorMessage = errorMessage[:255]
+			truncated = errorMessage[:255]
 		}
 		telemetry.Track("cli.error", map[string]interface{}{
-			"error": errorMessage,
+			"error": truncated,
 		})
 		if readableErr, ok := err.(*util.ReadableError); ok {
 			slog.Error("exited with error", "err", readableErr.Unwrap())
 			msg := readableErr.Error()
 			if msg != "" {
 				ui.Error(readableErr.Error())
+				if readableErr.IsHinted() {
+					fmt.Println("   " + ui.TEXT_DIM.Render(readableErr.Unwrap().Error()))
+				}
 			}
 		} else {
 			slog.Error("exited with error", "err", err)
@@ -455,13 +460,17 @@ var root = &cli.Command{
 					"Deploy your application. By default, it deploys to your personal stage.",
 					"",
 					"All the resources are deployed as concurrently as possible, based on their dependencies.",
-					"For resources like your sites and functions; it first builds them and then deploys the generated assets.",
+					"For resources like your container images, sites, and functions; it first builds them and then deploys the generated assets.",
 					"",
-					"Since the build processes for some of these resources, like Next.js, take a lot of memory, the concurrency is limited by default of 4.",
-					"You can change this by setting the `SST_BUILD_CONCURRENCY` environment variable.",
+					"Since the build processes for some of these resources take a lot of memory, the concurrency is limited by default.",
+					"- The sites default to 1 concurrent build.",
+					"- The container images default to 1 concurrent build.",
+					"- The Lambda functions default to 4 concurrent builds.",
+					"",
+					"You can change this by setting the `SST_BUILD_CONCURRENCY_SITE`, `SST_BUILD_CONCURRENCY_CONTAINER`, and `SST_BUILD_CONCURRENCY_FUNCTION` environment variables.",
 					"",
 					"```bash frame=\"none\"",
-					"SST_BUILD_CONCURRENCY=8 sst deploy",
+					"SST_BUILD_CONCURRENCY_SITE=2 SST_BUILD_CONCURRENCY_CONTAINER=2 SST_BUILD_CONCURRENCY_FUNCTION=8 sst deploy",
 					"```",
 					"",
 					"You can change this based on how much memory your CI environment has.",
@@ -1079,7 +1088,7 @@ var root = &cli.Command{
 						}
 						editorArgs := append(strings.Fields(editor), path)
 						fmt.Println(editorArgs)
-						cmd := exec.Command(editorArgs[0], editorArgs[1:]...)
+						cmd := process.Command(editorArgs[0], editorArgs[1:]...)
 						cmd.Stdin = os.Stdin
 						cmd.Stdout = os.Stdout
 						cmd.Stderr = os.Stderr

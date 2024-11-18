@@ -2,16 +2,16 @@ import fs from "fs";
 import path from "path";
 import crypto from "crypto";
 import archiver from "archiver";
-import type { Loader, BuildOptions } from "esbuild";
+import type { BuildOptions, Loader } from "esbuild";
 import {
-  Output,
-  ComponentResourceOptions,
-  asset,
-  output,
   all,
+  asset,
+  ComponentResourceOptions,
   interpolate,
-  unsecret,
+  Output,
+  output,
   secret,
+  unsecret,
 } from "@pulumi/pulumi";
 import { bootstrap } from "./helpers/bootstrap.js";
 import { Duration, DurationMinutes, toSeconds } from "../duration.js";
@@ -361,6 +361,20 @@ export interface FunctionArgs {
    */
   memory?: Input<Size>;
   /**
+   * The amount of ephemeral storage allocated for the function. This sets the ephemeral
+   * storage of the lambda function (/tmp). Must be between "512 MB" and "10240 MB" ("10 GB")
+   * in 1 MB increments.
+   *
+   * @default `"512 MB"`
+   * @example
+   * ```js
+   * {
+   *   storage: "5 GB"
+   * }
+   * ```
+   */
+  storage?: Input<Size>;
+  /**
    * Key-value pairs of values that are set as [Lambda environment variables](https://docs.aws.amazon.com/lambda/latest/dg/configuration-envvars.html).
    * The keys need to:
    * - Start with a letter
@@ -483,7 +497,7 @@ export interface FunctionArgs {
   injections?: Input<string[]>;
   /**
    * Configure the function logs in CloudWatch. Or pass in `false` to disable writing logs.
-   * @default `{retention: "forever", format: "text"}`
+   * @default `{retention: "1 month", format: "text"}`
    * @example
    * ```js
    * {
@@ -501,12 +515,12 @@ export interface FunctionArgs {
          *
          * Not application when an existing log group is provided.
          *
-         * @default `forever`
+         * @default `1 month`
          * @example
          * ```js
          * {
          *   logging: {
-         *     retention: "1 week"
+         *     retention: "forever"
          *   }
          * }
          * ```
@@ -746,7 +760,6 @@ export interface FunctionArgs {
      * Check out the _JS tab_ in the code snippets in the esbuild docs for the
      * [`BuildOptions`](https://esbuild.github.io/api/#build).
      * :::
-     *
      */
     esbuild?: Input<BuildOptions>;
     /**
@@ -823,7 +836,6 @@ export interface FunctionArgs {
   /**
    * Configure your python function.
    *
-   *
    * By default, SST will package all files in the same directory as the `handler` file.
    * This means that you need to your handler file be the root of all files that need to be
    * included in the function package. The only exception to this is a parent `pyproject.toml`
@@ -871,7 +883,7 @@ export interface FunctionArgs {
    * {
    *   copyFiles: [{ from: "src/index.js" }]
    * }
-   *```
+   * ```
    *
    * Copying over a single file from the `src` directory to the `core/src` directory in
    * the function package.
@@ -880,7 +892,7 @@ export interface FunctionArgs {
    * {
    *   copyFiles: [{ from: "src/index.js", to: "core/src/index.js" }]
    * }
-   *```
+   * ```
    *
    * Copying over a couple of files.
    *
@@ -891,7 +903,7 @@ export interface FunctionArgs {
    *     { from: "src/that.js", to: "core/src/that.js" }
    *   ]
    * }
-   *```
+   * ```
    */
   copyFiles?: Input<
     {
@@ -969,7 +981,7 @@ export interface FunctionArgs {
   /**
    * Enable versioning for the function.
    *
-   * @default Versioning disabled
+   * @default `false`
    * @example
    * ```js
    * {
@@ -977,7 +989,7 @@ export interface FunctionArgs {
    * }
    * ```
    */
-  versioning?: Input<true>;
+  versioning?: Input<boolean>;
   /**
    * A list of Lambda layer ARNs to add to the function.
    *
@@ -1003,7 +1015,8 @@ export interface FunctionArgs {
    * @example
    * Create an EFS file system.
    *
-   * ```js
+   * ```ts title="sst.config.ts"
+   * const vpc = new sst.aws.Vpc("MyVpc");
    * const fileSystem = new sst.aws.Efs("MyFileSystem", { vpc });
    * ```
    *
@@ -1012,7 +1025,7 @@ export interface FunctionArgs {
    * ```js
    * {
    *   volume: {
-   *     efs: fileSystem,
+   *     efs: fileSystem
    *   }
    * }
    * ```
@@ -1029,7 +1042,7 @@ export interface FunctionArgs {
    * }
    * ```
    *
-   * To use an existing EFS access point, pass in the EFS access point ARN.
+   * To use an existing EFS, you can pass in an EFS access point ARN.
    *
    * ```js
    * {
@@ -1041,11 +1054,11 @@ export interface FunctionArgs {
    */
   volume?: Input<{
     /**
-     * The EFS file system to mount.
+     * The EFS file system to mount. Or an EFS access point ARN.
      */
     efs: Input<Efs | string>;
     /**
-     * The path to mount the volumne.
+     * The path to mount the volume.
      * @default `"/mnt/efs"`
      */
     path?: Input<string>;
@@ -1076,21 +1089,24 @@ export interface FunctionArgs {
    * }
    * ```
    */
-  vpc?: Input<{
-    /**
-     * A list of VPC security group IDs.
-     */
-    securityGroups: Input<Input<string>[]>;
-    /**
-     * A list of VPC subnet IDs.
-     */
-    privateSubnets: Input<Input<string>[]>;
-    /**
-     * A list of VPC subnet IDs.
-     * @deprecated Use `privateSubnets` instead.
-     */
-    subnets?: Input<Input<string>[]>;
-  }>;
+  vpc?: Input<
+    | Vpc
+    | {
+        /**
+         * A list of VPC security group IDs.
+         */
+        securityGroups: Input<Input<string>[]>;
+        /**
+         * A list of VPC subnet IDs.
+         */
+        privateSubnets: Input<Input<string>[]>;
+        /**
+         * A list of VPC subnet IDs.
+         * @deprecated Use `privateSubnets` instead.
+         */
+        subnets?: Input<Input<string>[]>;
+      }
+  >;
   /**
    * [Transform](/docs/components#transform) how this component creates its underlying
    * resources.
@@ -1113,6 +1129,10 @@ export interface FunctionArgs {
    * @internal
    */
   _skipMetadata?: boolean;
+  /**
+   * @internal
+   */
+  _skipHint?: boolean;
 }
 
 /**
@@ -1209,7 +1229,6 @@ export interface FunctionArgs {
  * ```
  *
  * Or override it entirely by passing in your own function `bundle`.
- *
  */
 export class Function extends Component implements Link.Linkable {
   private function: Output<lambda.Function>;
@@ -1243,6 +1262,7 @@ export class Function extends Component implements Link.Linkable {
     const runtime = normalizeRuntime();
     const timeout = normalizeTimeout();
     const memory = normalizeMemory();
+    const storage = output(args.storage).apply((v) => v ?? "512 MB");
     const architecture = output(args.architecture).apply((v) => v ?? "x86_64");
     const environment = normalizeEnvironment();
     const streaming = normalizeStreaming();
@@ -1254,12 +1274,12 @@ export class Function extends Component implements Link.Linkable {
 
     const linkData = buildLinkData();
     const linkPermissions = buildLinkPermissions();
-    const { bundle, handler: handler0 } = buildHandler();
+    const { bundle, handler: handler0, sourcemaps } = buildHandler();
     const { handler, wrapper } = buildHandlerWrapper();
     const role = createRole();
     const imageAsset = createImageAsset();
-    const zipAsset = createZipAsset();
     const logGroup = createLogGroup();
+    const zipAsset = createZipAsset();
     const fn = createFunction();
     const fnUrl = createUrl();
     createProvisioned();
@@ -1275,6 +1295,7 @@ export class Function extends Component implements Link.Linkable {
       functionID: name,
       handler: args.handler,
       bundle: args.bundle,
+      logGroup: logGroup.apply((l) => l?.name),
       encryptionKey: Function.encryptionKey().base64,
       runtime,
       links: output(linkData).apply((input) =>
@@ -1322,8 +1343,11 @@ export class Function extends Component implements Link.Linkable {
       _metadata: {
         handler: args.handler,
         internal: args._skipMetadata,
+        dev: dev,
       },
-      _hint: fnUrl.apply((fnUrl) => fnUrl?.functionUrl),
+      _hint: args._skipHint
+        ? undefined
+        : fnUrl.apply((fnUrl) => fnUrl?.functionUrl),
     });
 
     function normalizeDev() {
@@ -1369,12 +1393,15 @@ export class Function extends Component implements Link.Linkable {
         result.SST_KEY_FILE = "resource.enc";
         if (dev) {
           result.SST_REGION = process.env.SST_AWS_REGION!;
+          result.SST_APPSYNC_HTTP = process.env.SST_APPSYNC_HTTP!;
+          result.SST_APPSYNC_REALTIME = process.env.SST_APPSYNC_REALTIME!;
           result.SST_FUNCTION_ID = name;
           result.SST_APP = $app.name;
           result.SST_STAGE = $app.stage;
           result.SST_ASSET_BUCKET = bootstrap.asset;
-          if (process.env.SST_FUNCTION_TIMEOUT)
+          if (process.env.SST_FUNCTION_TIMEOUT) {
             result.SST_FUNCTION_TIMEOUT = process.env.SST_FUNCTION_TIMEOUT;
+          }
         }
         return result;
       });
@@ -1388,14 +1415,15 @@ export class Function extends Component implements Link.Linkable {
       return output(args.logging).apply((logging) => {
         if (logging === false) return undefined;
 
-        if (logging?.retention && logging?.logGroup)
+        if (logging?.retention && logging?.logGroup) {
           throw new VisibleError(
             `Cannot set both "logging.retention" and "logging.logGroup"`,
           );
+        }
 
         return {
           logGroup: logging?.logGroup,
-          retention: logging?.retention ?? "forever",
+          retention: logging?.retention ?? "1 month",
           format: logging?.format ?? "text",
         };
       });
@@ -1451,10 +1479,11 @@ export class Function extends Component implements Link.Linkable {
           copyFiles.map(async (entry) => {
             const from = path.join($cli.paths.root, entry.from);
             const to = entry.to || entry.from;
-            if (path.isAbsolute(to))
+            if (path.isAbsolute(to)) {
               throw new VisibleError(
                 `Copy destination path "${to}" must be relative`,
               );
+            }
 
             const stats = await fs.promises.stat(from);
             const isDir = stats.isDirectory();
@@ -1469,30 +1498,31 @@ export class Function extends Component implements Link.Linkable {
       // "vpc" is undefined
       if (!args.vpc) return;
 
-      // "vpc" is a Vpc component
-      if (args.vpc instanceof Vpc) {
-        const result = {
-          privateSubnets: args.vpc.privateSubnets,
-          securityGroups: args.vpc.securityGroups,
-        };
-        return all([
-          args.vpc.nodes.natGateways,
-          args.vpc.nodes.natInstances,
-        ]).apply(([natGateways, natInstances]) => {
-          if (natGateways.length === 0 && natInstances.length === 0)
-            throw new VisibleError(
-              `Functions that are running in a VPC need a NAT gateway. Enable it by setting "nat" on the "sst.aws.Vpc" component.`,
-            );
-          return result;
-        });
-      }
-
-      // "vpc" is object
       return output(args.vpc).apply((vpc) => {
-        if (vpc.subnets)
+        // "vpc" is a Vpc component
+        if (vpc instanceof Vpc) {
+          const result = {
+            privateSubnets: vpc.privateSubnets,
+            securityGroups: vpc.securityGroups,
+          };
+          return all([vpc.nodes.natGateways, vpc.nodes.natInstances]).apply(
+            ([natGateways, natInstances]) => {
+              if (natGateways.length === 0 && natInstances.length === 0) {
+                throw new VisibleError(
+                  `Functions that are running in a VPC need a NAT gateway. Enable it by setting "nat" on the "sst.aws.Vpc" component.`,
+                );
+              }
+              return result;
+            },
+          );
+        }
+
+        // "vpc" is object
+        if (vpc.subnets) {
           throw new VisibleError(
             `The "vpc.subnets" property has been renamed to "vpc.privateSubnets". Update your code to use "vpc.privateSubnets" instead.`,
           );
+        }
 
         return vpc;
       });
@@ -1556,6 +1586,7 @@ export class Function extends Component implements Link.Linkable {
             handler: string;
             out: string;
             errors: string[];
+            sourcemaps: string[];
           }>("Runtime.Build", input);
           if (result.errors.length > 0) {
             throw new Error(result.errors.join("\n"));
@@ -1565,6 +1596,7 @@ export class Function extends Component implements Link.Linkable {
         return {
           handler: buildResult.handler,
           bundle: buildResult.out,
+          sourcemaps: buildResult.sourcemaps,
         };
       });
     }
@@ -1610,10 +1642,11 @@ export class Function extends Component implements Link.Linkable {
               path.join(bundle!, handlerDir, oldHandlerFileName + ext),
             ),
           );
-          if (!newHandlerFileExt)
+          if (!newHandlerFileExt) {
             throw new VisibleError(
               `Could not find handler file "${handler}" for function "${name}"`,
             );
+          }
 
           const split = injections.reduce(
             (acc, item) => {
@@ -1662,13 +1695,14 @@ export class Function extends Component implements Link.Linkable {
     }
 
     function createRole() {
-      if (args.role)
+      if (args.role) {
         return iam.Role.get(
           `${name}Role`,
           output(args.role).apply(parseRoleArn).roleName,
           {},
           { parent },
         );
+      }
 
       const policy = all([args.permissions || [], linkPermissions, dev]).apply(
         ([argsPermissions, linkPermissions, dev]) =>
@@ -1681,6 +1715,10 @@ export class Function extends Component implements Link.Linkable {
               })),
               ...(dev
                 ? [
+                    {
+                      actions: ["appsync:*"],
+                      resources: ["*"],
+                    },
                     {
                       actions: ["iot:*"],
                       resources: ["*"],
@@ -1823,8 +1861,22 @@ export class Function extends Component implements Link.Linkable {
       //       b/c the folder contains node_modules. And pnpm node_modules
       //       contains symlinks. Pulumi cannot zip symlinks correctly.
       //       We will zip the folder ourselves.
-      return all([bundle, wrapper, copyFiles, isContainer]).apply(
-        async ([bundle, wrapper, copyFiles, isContainer]) => {
+      return all([
+        bundle,
+        wrapper,
+        sourcemaps,
+        copyFiles,
+        isContainer,
+        logGroup.apply((l) => l?.arn),
+      ]).apply(
+        async ([
+          bundle,
+          wrapper,
+          sourcemaps,
+          copyFiles,
+          isContainer,
+          logGroupArn,
+        ]) => {
           if (isContainer) return;
 
           const zipPath = path.resolve(
@@ -1857,7 +1909,12 @@ export class Function extends Component implements Link.Linkable {
             // set the date to 0 so that the zip file is deterministic
             archive.glob(
               "**",
-              { cwd: bundle, dot: true },
+              {
+                cwd: bundle,
+                dot: true,
+                ignore:
+                  sourcemaps?.map((item) => path.relative(bundle, item)) || [],
+              },
               { date: new Date(0), mode: 0o777 },
             );
 
@@ -1885,14 +1942,32 @@ export class Function extends Component implements Link.Linkable {
           const hash = crypto.createHash("sha256");
           hash.update(await fs.promises.readFile(zipPath));
           const hashValue = hash.digest("hex");
+          const assetBucket = region.apply((region) =>
+            bootstrap.forRegion(region).then((d) => d.asset),
+          );
+          if (logGroupArn && sourcemaps) {
+            let index = 0;
+            for (const file of sourcemaps) {
+              new s3.BucketObjectv2(
+                `${name}Sourcemap${index}`,
+                {
+                  key: interpolate`sourcemap/${logGroupArn}/${hashValue}.${path.basename(
+                    file,
+                  )}`,
+                  bucket: assetBucket,
+                  source: new asset.FileAsset(file),
+                },
+                { parent, retainOnDelete: true },
+              );
+              index++;
+            }
+          }
 
           return new s3.BucketObjectv2(
             `${name}Code`,
             {
               key: interpolate`assets/${name}-code-${hashValue}.zip`,
-              bucket: region.apply((region) =>
-                bootstrap.forRegion(region).then((d) => d.asset),
-              ),
+              bucket: assetBucket,
               source: new asset.FileArchive(zipPath),
             },
             { parent },
@@ -1954,6 +2029,7 @@ export class Function extends Component implements Link.Linkable {
               role: args.role ?? role!.arn,
               timeout: timeout.apply((timeout) => toSeconds(timeout)),
               memorySize: memory.apply((memory) => toMBs(memory)),
+              ephemeralStorage: { size: storage.apply((v) => toMBs(v)) },
               environment: {
                 variables: environment,
               },
@@ -2038,13 +2114,15 @@ export class Function extends Component implements Link.Linkable {
     function createProvisioned() {
       return all([args.concurrency, fn.publish]).apply(
         ([concurrency, publish]) => {
-          if (!concurrency?.provisioned || concurrency.provisioned === 0)
+          if (!concurrency?.provisioned || concurrency.provisioned === 0) {
             return;
+          }
 
-          if (publish !== true)
+          if (publish !== true) {
             throw new VisibleError(
               `Provisioned concurrency requires function versioning. Set "versioning: true" to enable function versioning.`,
             );
+          }
 
           return new lambda.ProvisionedConcurrencyConfig(
             `${name}Provisioned`,
@@ -2085,10 +2163,11 @@ export class Function extends Component implements Link.Linkable {
    */
   public get url() {
     return this.fnUrl.apply((url) => {
-      if (!url)
+      if (!url) {
         throw new VisibleError(
           `Function URL is not enabled. Enable it with "url: true".`,
         );
+      }
       return url.functionUrl;
     });
   }

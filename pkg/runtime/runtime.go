@@ -52,9 +52,10 @@ func (input *BuildInput) Out() string {
 }
 
 type BuildOutput struct {
-	Out     string   `json:"out"`
-	Handler string   `json:"handler"`
-	Errors  []string `json:"errors"`
+	Out        string   `json:"out"`
+	Handler    string   `json:"handler"`
+	Errors     []string `json:"errors"`
+	Sourcemaps []string `json:"sourcemaps"`
 }
 
 type RunInput struct {
@@ -93,10 +94,6 @@ func (c *Collection) Runtime(input string) (Runtime, bool) {
 func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput, error) {
 	slog.Info("building function", "runtime", input.Runtime, "functionID", input.FunctionID)
 	defer slog.Info("function built", "runtime", input.Runtime, "functionID", input.FunctionID)
-	runtime, ok := c.Runtime(input.Runtime)
-	if !ok {
-		return nil, fmt.Errorf("Runtime not found: %v", input.Runtime)
-	}
 	out := input.Out()
 	var result *BuildOutput
 
@@ -117,6 +114,10 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 		if err != nil {
 			return nil, err
 		}
+		runtime, ok := c.Runtime(input.Runtime)
+		if !ok {
+			return nil, fmt.Errorf("Runtime not found: %v", input.Runtime)
+		}
 		result, err = runtime.Build(ctx, input)
 		if err != nil {
 			return nil, err
@@ -124,6 +125,9 @@ func (c *Collection) Build(ctx context.Context, input *BuildInput) (*BuildOutput
 	}
 
 	result.Out = out
+	if result.Sourcemaps == nil {
+		result.Sourcemaps = []string{}
+	}
 
 	if len(input.CopyFiles) > 0 {
 		for _, item := range input.CopyFiles {

@@ -67,15 +67,15 @@ if (!cmd || cmd === "components") {
         c.sources![0].fileName.endsWith("/aws/iam-edit.ts")
       );
       await generateGlobalConfigDoc(component, iamEditComponent!);
-    } else if (sourceFile === "platform/src/config.ts")
+    } else if (sourceFile === "platform/src/config.ts") {
       await generateConfigDoc(component);
-    else if (sourceFile.endsWith("/dns.ts")) await generateDnsDoc(component);
+    } else if (sourceFile.endsWith("/dns.ts")) await generateDnsDoc(component);
     else if (
       sourceFile.endsWith("/aws/permission.ts") ||
       sourceFile.endsWith("/cloudflare/binding.ts")
-    )
+    ) {
       await generateLinkableDoc(component);
-    else {
+    } else {
       const sdkName = component.name.split("/")[2];
       const sdk = sdks.find(
         (s) =>
@@ -103,7 +103,7 @@ function generateCliDoc() {
   fs.writeFileSync(
     outputFilePath,
     [
-      renderHeader("CLI", "Reference doc for the `sst` CLI."),
+      renderHeader("CLI", "Reference doc for the SST CLI."),
       renderSourceMessage("cmd/sst/main.go"),
       renderImports(outputFilePath),
       renderBodyBegin(),
@@ -722,26 +722,36 @@ function renderType(
     if (type.type === "templateLiteral") return renderTemplateLiteralType(type);
     if (type.type === "union") return renderUnionType(type);
     if (type.type === "array") return renderArrayType(type);
-    if (type.type === "reference" && type.package === "typescript")
+    if (type.type === "reference" && type.package === "typescript") {
       return renderTypescriptType(type);
-    if (type.type === "reference" && type.package === "@sst/platform")
+    }
+    if (type.type === "reference" && type.package === "@sst/platform") {
       return renderSstComponentType(type);
-    if (type.type === "reference" && type.package === "sst")
+    }
+    if (type.type === "reference" && type.package === "sst") {
       return renderSstSdkType(type);
-    if (type.type === "reference" && type.package === "@pulumi/pulumi")
+    }
+    if (type.type === "reference" && type.package === "@pulumi/pulumi") {
       return renderPulumiType(type);
-    if (type.type === "reference" && type.package?.startsWith("@pulumi/"))
+    }
+    if (type.type === "reference" && type.package?.startsWith("@pulumi/")) {
       return renderPulumiProviderType(type);
-    if (type.type === "reference" && type.package === "@pulumiverse/vercel")
+    }
+    if (type.type === "reference" && type.package === "@pulumiverse/vercel") {
       return renderVercelType(type);
-    if (type.type === "reference" && type.package === "@types/aws-lambda")
+    }
+    if (type.type === "reference" && type.package === "@types/aws-lambda") {
       return renderAwsLambdaType(type);
-    if (type.type === "reference" && type.package === "esbuild")
+    }
+    if (type.type === "reference" && type.package === "esbuild") {
       return renderEsbuildType(type);
-    if (type.type === "reflection" && type.declaration.signatures)
+    }
+    if (type.type === "reflection" && type.declaration.signatures) {
       return renderCallbackType(type);
-    if (type.type === "reflection" && type.declaration.children?.length)
+    }
+    if (type.type === "reflection" && type.declaration.children?.length) {
       return renderObjectType(type);
+    }
 
     // @ts-expect-error
     delete type._project;
@@ -918,6 +928,7 @@ function renderType(
       FunctionPermissionArgs: "function",
       Postgres: "postgres",
       PostgresArgs: "postgres",
+      Queue: "queue",
       QueueLambdaSubscriber: "queue-lambda-subscriber",
       KinesisStreamLambdaSubscriber: "kinesis-stream-lambda-subscriber",
       RealtimeLambdaSubscriber: "realtime-lambda-subscriber",
@@ -1470,8 +1481,7 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
           link.type.typeArguments![0].type === "union")
       ) {
         linkType = link.type.typeArguments![0];
-      }
-      // Convert Output<T> | undefined => T | undefined
+      } // Convert Output<T> | undefined => T | undefined
       else if (link.type && link.type.type === "union") {
         linkType = link.type;
         linkType.types = linkType.types.map((t) =>
@@ -1493,10 +1503,11 @@ function renderLinks(module: TypeDoc.DeclarationReflection) {
 
       // Find the getter property that matches the link name
       const getter = useClassGetters(module).find((g) => g.name === link.name);
-      if (!getter)
+      if (!getter) {
         throw new Error(
           `Failed to render link ${link.name} b/c cannot find a getter property with the matching name`
         );
+      }
 
       return [
         `- <p><code class="key">${renderName(link)}</code> ${renderType(
@@ -1700,7 +1711,7 @@ function renderName(prop: TypeDoc.DeclarationReflection) {
 }
 
 function renderSignatureArg(prop: TypeDoc.ParameterReflection) {
-  if (prop.defaultValue && prop.defaultValue !== "{}")
+  if (prop.defaultValue && prop.defaultValue !== "{}") {
     throw new Error(
       [
         `Unsupported default value "${prop.defaultValue}" for name "${prop.name}".`,
@@ -1712,6 +1723,7 @@ function renderSignatureArg(prop: TypeDoc.ParameterReflection) {
         `But in this case, the default value is not "{}". Hence not supported.`,
       ].join("\n")
     );
+  }
 
   return `${prop.name}${prop.flags.isOptional || prop.defaultValue ? "?" : ""}`;
 }
@@ -1882,10 +1894,11 @@ function useClassProviderNamespace(module: TypeDoc.DeclarationReflection) {
   //   }
   // ],
   const fileName = useClass(module).sources![0].fileName;
-  if (!fileName.startsWith("platform/src/components/"))
+  if (!fileName.startsWith("platform/src/components/")) {
     throw new Error(
       `Fail to generate class namespace from class fileName ${fileName}. Expected to start with "platform/src/components/"`
     );
+  }
 
   const namespace = fileName.split("/").slice(-2, -1)[0];
   return namespace === "components" ? "sst" : `sst.${namespace}`;
@@ -1942,17 +1955,20 @@ function useNestedTypes(
   prefix: string;
   depth: number;
 }[] {
-  if (type.type === "union")
+  if (type.type === "union") {
     return type.types.flatMap((t) => useNestedTypes(t, prefix, depth));
-  if (type.type === "array")
+  }
+  if (type.type === "array") {
     return useNestedTypes(type.elementType, `${prefix}[]`, depth);
-  if (type.type === "reference")
+  }
+  if (type.type === "reference") {
     return (type.typeArguments ?? []).flatMap((t) =>
       type.package === "typescript" && type.name === "Record"
         ? useNestedTypes(t, `${prefix}[]`, depth)
         : useNestedTypes(t, prefix, depth)
     );
-  if (type.type === "reflection" && type.declaration.children?.length)
+  }
+  if (type.type === "reflection" && type.declaration.children?.length) {
     return type.declaration.children!.flatMap((subType) => [
       { prefix, subType, depth },
       ...(subType.kind === TypeDoc.ReflectionKind.Property
@@ -1966,6 +1982,7 @@ function useNestedTypes(
           )
         : []),
     ]);
+  }
 
   return [];
 }
@@ -2000,6 +2017,12 @@ function patchCode() {
       // tries to traverse the import and fails. We don't need to look into $util
       // anyways as we will link to the pulumi docs.
       .replace("export import $util", "export const $util")
+      // change `export function $resolve` to `function $resolve` b/c TypeDoc
+      // search multiple lines
+      .replace(
+        /export function \$resolve[\s\S]*?(?=\/\*\*)/,
+        "export const $resolve: typeof util.all;\n"
+      )
   );
   // patch Linkable
   fs.cpSync(
